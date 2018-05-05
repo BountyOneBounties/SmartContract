@@ -10,6 +10,8 @@ contract BountyBG {
     uint256 public bountyFeeCount = 0;
     uint256 public bountyBeneficiariesCount = 2;
     uint256 public bountyDuration = 30 hours;
+    uint256 public bountyDurationPsterAllowed = 48 hours; // or whatever you need
+    
 
     mapping(uint256 => Bounty) bountyAt;
 
@@ -28,12 +30,25 @@ contract BountyBG {
         bool retracted;
     }
 
-    function BountyBG() public {
+    constructor() public {
         owner = msg.sender;
     }
 
     modifier onlyOwner() {
         require(msg.sender == owner);
+        _;
+    }
+
+    // my code
+    modifier onlyPoster(uint _bountyId) {
+        require(msg.sender == bountyAt[_bountyId].owner);
+        _;
+    }
+
+    modifier allowedToReward(uint _bountyId) {
+        require((msg.sender == bountyAt[_bountyId].owner) ||
+                (msg.sender == owner &&
+                bountyAt[_bountyId].startTime + bountyDurationPsterAllowed > block.timestamp));
         _;
     }
 
@@ -57,7 +72,7 @@ contract BountyBG {
         bountyBeneficiariesCount = _bountyBeneficiariesCount;
     }
 
-    function rewardUsers(uint256 _bountyId, address[] _users, uint256[] _rewards) external onlyOwner {
+    function rewardUsers(uint256 _bountyId, address[] _users, uint256[] _rewards) external allowedToReward(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(
             !bounty.ended &&
@@ -79,7 +94,7 @@ contract BountyBG {
 
         for (i = 0; i < _users.length; i++) {
             _users[i].transfer(_rewards[i]);
-            RewardStatus("Reward sent", bounty.id, _users[i], _rewards[i]);
+            emit RewardStatus("Reward sent", bounty.id, _users[i], _rewards[i]);
             /* if (_users[i].send(_rewards[i])) {
                 bounty.remainingBounty -= _rewards[i];
                 RewardStatus('Reward sent', bounty.id, _users[i], _rewards[i]);
@@ -89,16 +104,16 @@ contract BountyBG {
         }
     }
 
-    function rewardUser(uint256 _bountyId, address _user, uint256 _reward) external onlyOwner {
+    function rewardUser(uint256 _bountyId, address _user, uint256 _reward) external onlyPoster(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(bounty.remainingBounty >= _reward);
+        
         bounty.remainingBounty -= _reward;
-
         bounty.ended = true;
         bounty.endTime = block.timestamp;
         
         _user.transfer(_reward);
-        RewardStatus('Reward sent', bounty.id, _user, _reward);
+        emit RewardStatus('Reward sent', bounty.id, _user, _reward);
     }
 
     // USER ACTIONS TRIGGERED BY METAMASK
@@ -116,7 +131,7 @@ contract BountyBG {
         bountyFeeCount += bountyFee;
         bounty.startTime = block.timestamp;
         bounty.owner = msg.sender;
-        BountyStatus('Bounty submitted', bounty.id, msg.sender, msg.value);
+        emit BountyStatus('Bounty submitted', bounty.id, msg.sender, msg.value);
     }
 
     function cancelBounty(uint256 _bountyId) external {
@@ -131,7 +146,7 @@ contract BountyBG {
         bounty.ended = true;
         bounty.retracted = true;
         bounty.owner.transfer(bounty.bounty);
-        BountyStatus('Bounty was canceled', bounty.id, msg.sender, bounty.bounty);
+        emit BountyStatus('Bounty was canceled', bounty.id, msg.sender, bounty.bounty);
     }
 
 
