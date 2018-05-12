@@ -105,12 +105,16 @@ contract BountyBG {
     //     minBounty = _minBounty;
     // }
 
-    // my code
+    // my code: Now for any ERC20 token owner can determine minimum bounty amount.
+    // @tokenAddress: the token contract address.
+    // @_minBounty: minimum bounty amount in token unit.
     function setMinBounty(address tokenAddress, uint256 _minBounty) external onlyOwner {
         minBounty[tokenAddress] = _minBounty;
     }
 
-    // my code
+    // my code: Now for any ERC20 token owner can determine bounty fee amount.
+    // @tokenAddress: the token contract address.
+    // @_bountyFee: bounty Fee in token unit.
     function setBountyFee(address _tokenAddress, uint256 _bountyFee) external onlyOwner {
         bountyFee[_tokenAddress] = _bountyFee;
     }
@@ -119,7 +123,7 @@ contract BountyBG {
         bountyBeneficiariesCount = _bountyBeneficiariesCount;
     }
 
-    // code changed
+    // code changed: rewardUsers now support payment in any ERC20 token.
     function rewardUsers(uint256 _bountyId, address[] _users, uint256[] _rewards) external allowedToReward(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(
@@ -162,7 +166,7 @@ contract BountyBG {
         }
     }
 
-    // code changed
+    // code changed: rewardUser now support payment in any ERC20 token.
     function rewardUser(uint256 _bountyId, address _user, uint256 _reward) external onlyPoster(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(bounty.remainingBounty >= _reward);
@@ -202,7 +206,8 @@ contract BountyBG {
         emit BountyStatus('Bounty submitted', bounty.id, msg.sender, msg.value);
     }
 
-    // my code
+    // my code: createBountyERC20 is added for when one can create a new bounty but to pay in an ERC20 token
+    // @_tokenAddress: ERC20 token address which by payment will be done.
     function createBountyERC20(uint256 _bountyId, address _tokenAddress) external payable {
         ERC20Interface token = ERC20Interface(_tokenAddress);
         require(
@@ -224,7 +229,7 @@ contract BountyBG {
         emit BountyStatus('Bounty submitted with ERC20', bounty.id, msg.sender, bountyAmount);
     }
 
-    // code changed
+    // code changed: cancelBounty now support payments with any ERC20 token.
     function cancelBounty(uint256 _bountyId) external {
         Bounty storage bounty = bountyAt[_bountyId];
         require(
