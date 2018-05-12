@@ -1,12 +1,38 @@
 pragma solidity ^0.4.14;
 
+// The common Interface for any ERC20 token is added here, then
+// Having the address of any ERC20 token we can send transaction to it.
+contract ERC20Interface {
+    function totalSupply() public constant returns (uint);
+    function balanceOf(address tokenOwner) public constant returns (uint balance);
+    function allowance(address tokenOwner, address spender) public constant returns (uint remaining);
+    function transfer(address to, uint tokens) public returns (bool success);
+    function approve(address spender, uint tokens) public returns (bool success);
+    function transferFrom(address from, address to, uint tokens) public returns (bool success);
+
+    event Transfer(address indexed from, address indexed to, uint tokens);
+    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
+}
+
+
+
 contract BountyBG {
 
     address public owner;
 
     uint256 public bountyCount = 0;
-    uint256 public minBounty = 10 finney;
-    uint256 public bountyFee = 2 finney;
+    // uint256 public minBounty = 10 finney;
+    // uint256 public bountyFee = 2 finney;
+    
+    // my code: 
+    // As the contract is supposed to support any ERC20 contract, the bountyFee and minBounty  
+    // parameter must bedetermined according to token introduced by bounty owner.
+    mapping (address => uint256) bountyFee;
+    mapping (address => uint256) minBounty;
+
+    // my code
+    enum paymentType {ETHER, ERC20}
+
     uint256 public bountyFeeCount = 0;
     uint256 public bountyBeneficiariesCount = 2;
     uint256 public bountyDuration = 30 hours;
@@ -23,6 +49,14 @@ contract BountyBG {
         uint256 id;
         address owner;
         uint256 bounty;
+        
+        // my code :
+        // ParameterType: {'ETHER': payment is done by ethereum, 'ERC20': payment is done by any ERC20 Token.}
+        // token Address: {if the payment is done by an ERC20 Token, here the token address must be registered,
+        // -------------:  else, you can put the contract address or leave it blank.}
+        paymentType PaymentType;
+        address tokenAddress;
+
         uint256 remainingBounty;
         uint256 startTime;
         uint256 endTime;
@@ -32,6 +66,10 @@ contract BountyBG {
 
     constructor() public {
         owner = msg.sender;
+
+        // my code
+        this.setMinBounty(this, 10 finney);
+        this.setBountyFee(this, 2 finney);
     }
 
     modifier onlyOwner() {
@@ -39,7 +77,6 @@ contract BountyBG {
         _;
     }
 
-    // my code
     modifier onlyPoster(uint _bountyId) {
         require(msg.sender == bountyAt[_bountyId].owner);
         _;
@@ -64,14 +101,25 @@ contract BountyBG {
         bountyDuration = _bountyDuration;
     }
 
-    function setMinBounty(uint256 _minBounty) external onlyOwner {
-        minBounty = _minBounty;
+    // function setMinBounty(uint256 _minBounty) external onlyOwner {
+    //     minBounty = _minBounty;
+    // }
+
+    // my code
+    function setMinBounty(address tokenAddress, uint256 _minBounty) external onlyOwner {
+        minBounty[tokenAddress] = _minBounty;
+    }
+
+    // my code
+    function setBountyFee(address _tokenAddress, uint256 _bountyFee) external onlyOwner {
+        bountyFee[_tokenAddress] = _bountyFee;
     }
 
     function setBountyBeneficiariesCount(uint256 _bountyBeneficiariesCount) external onlyOwner {
         bountyBeneficiariesCount = _bountyBeneficiariesCount;
     }
 
+    // code changed
     function rewardUsers(uint256 _bountyId, address[] _users, uint256[] _rewards) external allowedToReward(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(
@@ -92,8 +140,18 @@ contract BountyBG {
 
         require(bounty.bounty >= currentRewards);
 
+        if (bounty.PaymentType == paymentType.ETHER) {
+            address tokenAddress = bounty.tokenAddress;
+            ERC20Interface token = ERC20Interface(tokenAddress);
+        }
+
         for (i = 0; i < _users.length; i++) {
-            _users[i].transfer(_rewards[i]);
+            if (bounty.PaymentType == paymentType.ETHER) {
+                _users[i].transfer(_rewards[i]);    
+            } else {
+                token.transfer(_users[i], _rewards[i]);
+            }
+            
             emit RewardStatus("Reward sent", bounty.id, _users[i], _rewards[i]);
             /* if (_users[i].send(_rewards[i])) {
                 bounty.remainingBounty -= _rewards[i];
@@ -104,6 +162,7 @@ contract BountyBG {
         }
     }
 
+    // code changed
     function rewardUser(uint256 _bountyId, address _user, uint256 _reward) external onlyPoster(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
         require(bounty.remainingBounty >= _reward);
@@ -112,7 +171,14 @@ contract BountyBG {
         bounty.ended = true;
         bounty.endTime = block.timestamp;
         
-        _user.transfer(_reward);
+        if (bounty.PaymentType == paymentType.ETHER) {
+            _user.transfer(_reward);
+        } else {
+            address tokenAddress = bounty.tokenAddress;
+            ERC20Interface token = ERC20Interface(tokenAddress);
+            token.transfer(_user, _reward);
+        }
+
         emit RewardStatus('Reward sent', bounty.id, _user, _reward);
     }
 
@@ -120,20 +186,45 @@ contract BountyBG {
 
     function createBounty(uint256 _bountyId) external payable {
         require(
-            msg.value >= minBounty + bountyFee
+            msg.value >= minBounty[this] + bountyFee[this]
         );
         Bounty storage bounty = bountyAt[_bountyId];
         require(bounty.id == 0);
         bountyCount++;
         bounty.id = _bountyId;
-        bounty.bounty = msg.value - bountyFee;
+        bounty.bounty = msg.value - bountyFee[this];
         bounty.remainingBounty = bounty.bounty;
-        bountyFeeCount += bountyFee;
+        bounty.PaymentType = paymentType.ETHER;
+        bounty.tokenAddress = this;
+        bountyFeeCount += bountyFee[this];
         bounty.startTime = block.timestamp;
         bounty.owner = msg.sender;
         emit BountyStatus('Bounty submitted', bounty.id, msg.sender, msg.value);
     }
 
+    // my code
+    function createBountyERC20(uint256 _bountyId, address _tokenAddress) external payable {
+        ERC20Interface token = ERC20Interface(_tokenAddress);
+        require(
+            token.allowance(msg.sender, this) >= minBounty[_tokenAddress] + bountyFee[_tokenAddress]
+        );
+        uint256 bountyAmount = token.allowance(msg.sender, this);
+        token.transferFrom(msg.sender, this, bountyAmount);
+        Bounty storage bounty = bountyAt[_bountyId];
+        require(bounty.id == 0);
+        bountyCount++;
+        bounty.id = _bountyId;
+        bounty.bounty = bountyAmount - bountyFee[_tokenAddress];
+        bounty.remainingBounty = bounty.bounty;
+        bounty.PaymentType = paymentType.ERC20;
+        bounty.tokenAddress = _tokenAddress;
+        bountyFeeCount += bountyFee[_tokenAddress];
+        bounty.startTime = block.timestamp;
+        bounty.owner = msg.sender;
+        emit BountyStatus('Bounty submitted with ERC20', bounty.id, msg.sender, bountyAmount);
+    }
+
+    // code changed
     function cancelBounty(uint256 _bountyId) external {
         Bounty storage bounty = bountyAt[_bountyId];
         require(
@@ -145,15 +236,20 @@ contract BountyBG {
         );
         bounty.ended = true;
         bounty.retracted = true;
-        bounty.owner.transfer(bounty.bounty);
+        if (bounty.PaymentType == paymentType.ETHER) {
+            bounty.owner.transfer(bounty.bounty);
+        } else {
+            address tokenAddress = bounty.tokenAddress;
+            ERC20Interface token = ERC20Interface(tokenAddress);
+            token.approve(bounty.owner, bounty.bounty);
+        }
         emit BountyStatus('Bounty was canceled', bounty.id, msg.sender, bounty.bounty);
     }
-
 
     // CUSTOM GETTERS
 
     function getBalance() external view returns (uint256) {
-        return this.balance;
+        return address(this).balance;
     }
 
     function getBounty(uint256 _bountyId) external view
