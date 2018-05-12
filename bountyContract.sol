@@ -30,10 +30,13 @@ contract BountyBG {
     mapping (address => uint256) bountyFee;
     mapping (address => uint256) minBounty;
 
-    // my code
+    // my code: payment types are ether or erc20 type token
     enum paymentType {ETHER, ERC20}
 
-    uint256 public bountyFeeCount = 0;
+    // uint256 public bountyFeeCount = 0;
+    // my code: bounty fees must be counted with respect to token payments
+    mapping (address => uint256) public bountyFeeCount;
+
     uint256 public bountyBeneficiariesCount = 2;
     uint256 public bountyDuration = 30 hours;
     uint256 public bountyDurationPsterAllowed = 48 hours; // or whatever you need
@@ -91,10 +94,17 @@ contract BountyBG {
 
     // BLOCKGEEKS ACTIONS
 
-    function withdrawFee(uint256 _amount) external onlyOwner {
-        require(_amount <= bountyFeeCount);
-        bountyFeeCount -= _amount;
-        owner.transfer(_amount);
+    // code changed: Now owner can also withdraw fees by other ERC20 tokens.
+    // @_tokenAddress: ERC20 token (note: if you want to withdraw from the contract just pass contract address.)
+    function withdrawFee(uint256 _amount, address _tokenAddress) external onlyOwner {
+        require(_amount <= bountyFeeCount[_tokenAddress]);
+        bountyFeeCount[_tokenAddress] -= _amount;
+        if (_tokenAddress == address(this)) {
+            owner.transfer(_amount);
+        } else {
+            ERC20Interface token = ERC20Interface(_tokenAddress);
+            token.transfer(owner, _amount);
+        }
     }
 
     function setBountyDuration(uint256 _bountyDuration) external onlyOwner {
@@ -200,7 +210,7 @@ contract BountyBG {
         bounty.remainingBounty = bounty.bounty;
         bounty.PaymentType = paymentType.ETHER;
         bounty.tokenAddress = this;
-        bountyFeeCount += bountyFee[this];
+        bountyFeeCount[this] += bountyFee[this];
         bounty.startTime = block.timestamp;
         bounty.owner = msg.sender;
         emit BountyStatus('Bounty submitted', bounty.id, msg.sender, msg.value);
@@ -223,7 +233,7 @@ contract BountyBG {
         bounty.remainingBounty = bounty.bounty;
         bounty.PaymentType = paymentType.ERC20;
         bounty.tokenAddress = _tokenAddress;
-        bountyFeeCount += bountyFee[_tokenAddress];
+        bountyFeeCount[bounty.tokenAddress] += bountyFee[_tokenAddress];
         bounty.startTime = block.timestamp;
         bounty.owner = msg.sender;
         emit BountyStatus('Bounty submitted with ERC20', bounty.id, msg.sender, bountyAmount);
