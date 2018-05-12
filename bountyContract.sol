@@ -69,10 +69,6 @@ contract BountyBG {
 
     constructor() public {
         owner = msg.sender;
-
-        // my code
-        this.setMinBounty(this, 10 finney);
-        this.setBountyFee(this, 2 finney);
     }
 
     modifier onlyOwner() {
