@@ -15,22 +15,16 @@ contract BountyBG {
     uint256 public bountyFee = 2 finney;
     uint256 public minBounty = 10 finney;
     
-    // As the contract is supposed to support any ERC20 contract, the bountyFee and minBounty  
-    // parameter must be determined according to token introduced by bounty owner.
     mapping (address => uint256) bountyFeeToken;
     mapping (address => uint256) minBountyToken;
 
-    // payment types are ether or erc20 type token
     enum paymentType {ETHER, ERC20}
 
-    // uint256 public bountyFeeCount = 0;
-    // bounty fees must be counted with respect to token payments
     mapping (address => uint256) public bountyFeeCount;
 
     uint256 public bountyBeneficiariesCount = 2;
     uint256 public bountyDuration = 30 hours;
-    uint256 public bountyDurationPsterAllowed = 48 hours; // or whatever you need
-    
+    uint256 public bountyDurationPsterAllowed = 48 hours;     
 
     mapping(uint256 => Bounty) bountyAt;
 
@@ -42,14 +36,8 @@ contract BountyBG {
         uint256 id;
         address owner;
         uint256 bounty;
-        
-        // my code :
-        // ParameterType: {"ETHER": payment is done by ethereum, "ERC20": payment is done by any ERC20 Token.}
-        // token Address: {if the payment is done by an ERC20 Token, here the token address must be registered,
-        // -------------:  else, you can put the contract address or leave it blank.}
         paymentType payment;
         address tokenAddress;
-
         uint256 remainingBounty;
         uint256 startTime;
         uint256 endTime;
@@ -65,7 +53,7 @@ contract BountyBG {
      * @dev Throws if called by any account other than the owner.
      */
     modifier onlyOwner() {
-        require(msg.sender == owner);
+        require(msg.sender == owner, "Only Owner is alloowes!");
         _;
     }
 
@@ -73,7 +61,7 @@ contract BountyBG {
      * @dev Throws if called by any account other than the bounty poster.
      */
     modifier onlyPoster(uint _bountyId) {
-        require(msg.sender == bountyAt[_bountyId].owner);
+        require(msg.sender == bountyAt[_bountyId].owner, "Only bounty poster is allowed!");
         _;
     }
 
@@ -85,27 +73,28 @@ contract BountyBG {
         require(
             msg.sender == bountyAt[_bountyId].owner || 
             ((msg.sender == owner) && 
-            (bountyAt[_bountyId].startTime + bountyDurationPsterAllowed > block.timestamp)));
+            (bountyAt[_bountyId].startTime + bountyDurationPsterAllowed > block.timestamp)),
+            "You are not allowed to reward!");
         _;
     }
 
     /**
-     * @dev Withdraw an amount of Ether to the contract owner. Could be called only by owner.
+     * @dev Withdraws an amount of Ether to the contract owner. Could be called only by owner.
      * @param _amount The amount of Eth must be transfered to the owner address.
      */
     function withdrawFee(uint256 _amount) external onlyOwner {
-        require(_amount <= bountyFeeCount[this]);
+        require(_amount <= bountyFeeCount[this], "Withdrawal Ether amount must be lower than bounty fee");
         bountyFeeCount[this] -= _amount;
         owner.transfer(_amount);
     }
 
     /**
-     * @dev Withdraw an amount of tokens of an ERC20 token to the contract owner. Could be called only by owner.
+     * @dev Withdraws an amount of tokens of an ERC20 token to the contract owner. Could be called only by owner.
      * @param _amount The amount of Eth must be transfered to the owner address.
      * @param _tokanAdress The address of ERC20 Token contract.
      */
     function withdrawFeeToken(uint256 _amount, address _tokenAddress) external onlyOwner{
-        require(_amount <= bountyFeeCount[_tokenAddress]);
+        require(_amount <= bountyFeeCount[_tokenAddress], "Withdrawal Token amount must be lower than bounty fee");
         bountyFeeCount[_tokenAddress] -= _amount;
         ERC20Interface token = ERC20Interface(_tokenAddress);
         token.transfer(owner, _amount);
@@ -168,7 +157,8 @@ contract BountyBG {
             bounty.startTime + bountyDuration > block.timestamp &&
             _users.length > 0 &&
             _users.length <= bountyBeneficiariesCount &&
-            _users.length == _rewards.length
+            _users.length == _rewards.length,
+            "Rewarding Users is not permitted"
         );
 
         bounty.ended = true;
@@ -178,7 +168,7 @@ contract BountyBG {
             currentRewards += _rewards[i];
         }
 
-        require(bounty.bounty >= currentRewards);
+        require(bounty.bounty >= currentRewards, "bounty amount must be higher than total rewards!");
 
         if (bounty.payment == paymentType.ERC20) {
             address tokenAddress = bounty.tokenAddress;
@@ -210,7 +200,7 @@ contract BountyBG {
      */
     function rewardUser(uint256 _bountyId, address _user, uint256 _reward) external onlyPoster(_bountyId) {
         Bounty storage bounty = bountyAt[_bountyId];
-        require(bounty.remainingBounty >= _reward);
+        require(bounty.remainingBounty >= _reward, "bounty amount must be higher than total rewards!");
         
         bounty.remainingBounty -= _reward;
         bounty.ended = true;
@@ -233,11 +223,9 @@ contract BountyBG {
      * (!!! _bountyId param seems to be unnecessary. actually bounty id must be set automatically not manually.)
      */
     function createBounty(uint256 _bountyId) external payable {
-        require(
-            msg.value >= minBounty + bountyFee
-        );
+        require(msg.value >= minBounty + bountyFee, "Low bounty amount!");
         Bounty storage bounty = bountyAt[_bountyId];
-        require(bounty.id == 0);
+        require(bounty.id == 0, "Bad bounty Id!");
         bountyCount++;
         bounty.id = _bountyId;
         bounty.bounty = msg.value - bountyFee;
@@ -250,7 +238,6 @@ contract BountyBG {
         emit BountyStatus("Bounty submitted", bounty.id, msg.sender, msg.value);
     }
 
-    // @_tokenAddress: ERC20 token address which by payment will be done.
     /**
      * @dev creates a new bounty project with the payment of an ERC20 Token and sets its parameters.
      * @param _bountyId bounty project id.
@@ -262,12 +249,13 @@ contract BountyBG {
         require(
             minBountyToken[_tokenAddress] > 0 &&
             bountyFeeToken[_tokenAddress] > 0 &&
-            token.allowance(msg.sender, this) >= minBountyToken[_tokenAddress] + bountyFeeToken[_tokenAddress]
+            token.allowance(msg.sender, this) >= minBountyToken[_tokenAddress] + bountyFeeToken[_tokenAddress],
+            "Low bounty amount!"
         );
         uint256 bountyAmount = token.allowance(msg.sender, this);
         token.transferFrom(msg.sender, this, bountyAmount);
         Bounty storage bounty = bountyAt[_bountyId];
-        require(bounty.id == 0);
+        require(bounty.id == 0, "Bad bounty Id!");
         bountyCount++;
         bounty.id = _bountyId;
         bounty.bounty = bountyAmount - bountyFeeToken[_tokenAddress];
@@ -291,7 +279,8 @@ contract BountyBG {
             !bounty.ended &&
             !bounty.retracted &&
             bounty.owner == msg.sender &&
-            bounty.startTime + bountyDuration < block.timestamp
+            bounty.startTime + bountyDuration < block.timestamp,
+            "canceling bounty is not permitted!"
         );
         bounty.ended = true;
         bounty.retracted = true;
